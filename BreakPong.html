@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Break-Pong</title>
     <style>
         body {
@@ -13,32 +13,27 @@
             margin: 0;
             background: linear-gradient(45deg, #1a1a1a, #2a2a2a);
             font-family: Arial, sans-serif;
-            overflow: hidden; /* Prevent scrolling */
         }
         #game-container {
             position: relative;
-            width: 100%;
-            height: 100%;
         }
         canvas {
             border: 2px solid #ffffff20;
             border-radius: 10px;
             box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-            max-width: 100%;
-            max-height: 100%;
         }
         #left-score, #right-score {
             position: absolute;
-            top: 10px;
+            top: 20px;
             color: white;
-            font-size: 20px;
+            font-size: 24px;
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
         }
         #left-score {
-            left: 20px;
+            left: 50px;
         }
         #right-score {
-            right: 20px;
+            right: 50px;
         }
         #game-over {
             position: absolute;
@@ -46,45 +41,36 @@
             left: 50%;
             transform: translate(-50%, -50%);
             color: #ffffff;
-            font-size: 32px;
+            font-size: 36px;
             text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.8);
             display: none;
-            text-align: center;
         }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
         <div id="left-score">Left: 0</div>
         <div id="right-score">Right: 0</div>
         <div id="game-over"></div>
     </div>
 
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
-        window.Telegram.WebApp.ready();
-        window.Telegram.WebApp.expand(); // Full-screen mode
-
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // Dynamic canvas sizing
-        canvas.width = Math.min(window.innerWidth * 0.9, 800);
-        canvas.height = Math.min(window.innerHeight * 0.9, 600);
+        // Constants
         const SCREEN_WIDTH = canvas.width;
         const SCREEN_HEIGHT = canvas.height;
-
-        // Adjusted constants based on screen size
-        const PADDLE_WIDTH = SCREEN_WIDTH * 0.025; // 2.5% of width
-        const PADDLE_HEIGHT = SCREEN_HEIGHT * 0.15; // 15% of height
-        const BALL_SIZE = SCREEN_WIDTH * 0.025;
-        const BRICK_WIDTH = SCREEN_WIDTH / 10; // 10 columns fit screen
-        const BRICK_HEIGHT = SCREEN_HEIGHT / 30; // Scaled to height
+        const PADDLE_WIDTH = 20;
+        const PADDLE_HEIGHT = 100;
+        const BALL_SIZE = 20;
+        const BRICK_WIDTH = 40;
+        const BRICK_HEIGHT = 20;
         const BRICK_COLUMNS = 5;
-        const BRICK_ROWS = Math.floor(SCREEN_HEIGHT / BRICK_HEIGHT / 2); // Half screen height
-        const PADDLE_SPEED = SCREEN_HEIGHT * 0.008;
-        const BALL_SPEED = SCREEN_WIDTH * 0.007;
+        const BRICK_ROWS = 30;
+        const PADDLE_SPEED = 5;
+        const BALL_SPEED = 5;
         const TARGET_SCORE = 50;
 
         // Colors
@@ -206,8 +192,8 @@
         }
 
         // Initialize game objects
-        const leftPaddle = new Paddle(PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2);
-        const rightPaddle = new Paddle(SCREEN_WIDTH - 2 * PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2);
+        const leftPaddle = new Paddle(50, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2);
+        const rightPaddle = new Paddle(SCREEN_WIDTH - 50 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2);
         const ball = new Ball();
 
         // Create brick wall
@@ -224,7 +210,7 @@
         const particles = [];
         let gameOver = false;
 
-        // Keyboard controls (for desktop)
+        // Keyboard controls
         document.addEventListener('keydown', (e) => {
             switch (e.key) {
                 case 'w': leftPaddle.movingUp = true; break;
@@ -243,22 +229,6 @@
             }
         });
 
-        // Touch controls (for mobile)
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            const touch = e.touches[0];
-            const canvasRect = canvas.getBoundingClientRect();
-            const touchY = touch.clientY - canvasRect.top;
-
-            if (touch.clientX < SCREEN_WIDTH / 2) {
-                leftPaddle.y = touchY - PADDLE_HEIGHT / 2;
-                leftPaddle.y = Math.max(0, Math.min(SCREEN_HEIGHT - PADDLE_HEIGHT, leftPaddle.y));
-            } else {
-                rightPaddle.y = touchY - PADDLE_HEIGHT / 2;
-                rightPaddle.y = Math.max(0, Math.min(SCREEN_HEIGHT - PADDLE_HEIGHT, rightPaddle.y));
-            }
-        });
-
         function update() {
             if (gameOver) {
                 document.getElementById('game-over').style.display = 'block';
@@ -269,10 +239,12 @@
             rightPaddle.move();
             ball.move();
 
+            // Ball collisions with walls
             if (ball.y - ball.size / 2 <= 0 || ball.y + ball.size / 2 >= SCREEN_HEIGHT) {
                 ball.velY = -ball.velY;
             }
 
+            // Ball collisions with paddles
             if (ballCollidesWithPaddle(ball, leftPaddle)) {
                 ball.velX = Math.abs(ball.velX);
                 ball.lastHit = 'left';
@@ -281,6 +253,7 @@
                 ball.lastHit = 'right';
             }
 
+            // Ball collisions with bricks
             for (const brick of bricks) {
                 if (ballCollidesWithBrick(ball, brick)) {
                     brick.intact = false;
@@ -293,6 +266,7 @@
                 }
             }
 
+            // Ball off screen
             if (ball.x - ball.size / 2 <= 0) {
                 rightScore += 5;
                 ball.reset();
@@ -301,18 +275,20 @@
                 ball.reset();
             }
 
+            // Update particles
             for (let i = particles.length - 1; i >= 0; i--) {
                 particles[i].update();
                 if (particles[i].life <= 0) particles.splice(i, 1);
             }
 
+            // Update scores
             document.getElementById('left-score').textContent = `Left: ${leftScore}`;
             document.getElementById('right-score').textContent = `Right: ${rightScore}`;
 
+            // Check for game over
             if (leftScore >= TARGET_SCORE || rightScore >= TARGET_SCORE) {
                 gameOver = true;
-                document.getElementById('game-over').textContent = `${leftScore >= TARGET_SCORE ? 'Left' : 'Right'} Wins!\nTap to Restart`;
-                canvas.addEventListener('touchstart', restartGame, { once: true });
+                document.getElementById('game-over').textContent = `${leftScore >= TARGET_SCORE ? 'Left' : 'Right'} Wins!`;
             }
         }
 
@@ -325,15 +301,6 @@
             rightPaddle.draw();
             ball.draw();
             for (const particle of particles) particle.draw();
-        }
-
-        function restartGame() {
-            leftScore = 0;
-            rightScore = 0;
-            gameOver = false;
-            ball.reset();
-            bricks.forEach(brick => brick.intact = true);
-            document.getElementById('game-over').style.display = 'none';
         }
 
         function gameLoop() {
