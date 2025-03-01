@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GrokPong</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(45deg, #0d1b38, #2a1b5e); /* Deep space gradient */
+            font-family: 'Courier New', monospace;
+            color: #e6f0ff; /* Star-white */
+            overflow: hidden; /* Prevent scrolling in Mini App */
+            display: flex;
+            flex-direction: column; /* Stack elements vertically */
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            position: relative;
+        }
+        #bg-particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Ensure it’s behind everything */
+            pointer-events: none;
+        }
+        #game-container {
+            position: relative;
+            z-index: 10; /* Above background canvas */
+            width: 100%;
+            height: 100%;
+            max-width: 800px; /* Fit mobile screens */
+            max-height: 600px;
+            margin-bottom: 15px; /* Space for the restart button below */
+        }
+        #gameCanvas {
+            width: 100%;
+            height: 100%;
+            max-width: 800px;
+            max-height: 600px;
+            border: 2px solid #00e5ff; /* Neon teal border */
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.5); /* Neon teal glow */
+            display: block;
+        }
+        #left-score, #right-score {
+            position: absolute;
+            top: 20px;
+            color: #e6f0ff; /* Star-white */
+            font-size: 24px;
+            text-shadow: 0 0 5px #00e5ff; /* Neon teal glow */
+            z-index: 11; /* Ensure scores are above the game canvas */
+        }
+        #left-score { left: 20px; }
+        #right-score { right: 20px; }
+        #game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff00ff; /* Electric magenta */
+            font-size: 36px;
+            text-shadow: 0 0 6px #00e5ff; /* Neon teal glow */
+            display: none;
+            z-index: 11; /* Ensure game-over message is above the game canvas */
+        }
+        #restart-btn {
+            padding: 10px 20px;
+            background: #ff00ff; /* Electric magenta */
+            color: #0d1b38; /* Dark navy text */
+            border: 2px solid #00e5ff; /* Neon teal border */
+            border-radius: 5px;
+            font-size: 1.1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 10; /* Above background canvas */
+        }
+        #restart-btn:hover {
+            background: #39ff14; /* Cyber lime on hover */
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.7); /* Neon teal glow */
+            color: #0d1b38;
+        }
+        /* Responsive adjustments for mobile */
+        @media (max-width: 600px) {
+            #gameCanvas {
+                width: 100%;
+                height: auto;
+                max-height: 400px; /* Adjust for smaller screens */
+            }
+            #left-score, #right-score {
+                font-size: 18px;
+                top: 10px;
+            }
+            #game-over {
+                font-size: 24px;
+            }
+            #restart-btn {
+                padding: 8px 16px;
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="bg-particle-canvas"></canvas>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="left-score">Left: 0</div>
+        <div id="right-score">Right: 0</div>
+        <div id="game-over"></div>
+    </div>
+    <button id="restart-btn">Restart Game</button>
+
+    <script>
+        // Telegram Mini App Integration
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand(); // Expand to full screen
+
+        // Background Particle Animation
+        const bgParticleCanvas = document.getElementById('bg-particle-canvas');
+        const bgParticleCtx = bgParticleCanvas.getContext('2d');
+        let bgParticlesArray = [];
+        const numberOfParticles = 50;
+
+        function resizeBgParticleCanvas() {
+            bgParticleCanvas.width = window.innerWidth;
+            bgParticleCanvas.height = window.innerHeight;
+            bgParticlesArray = [];
+            initBgParticles();
+        }
+
+        class BgParticle {
+            constructor() {
+                this.x = Math.random() * bgParticleCanvas.width;
+                this.y = Math.random() * bgParticleCanvas.height;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = Math.random() * 1 - 0.5;
+                this.speedY = Math.random() * 1 - 0.5;
+                this.color = ['#00e5ff', '#39ff14', '#ff00ff', '#e6f0ff'][Math.floor(Math.random() * 4)]; // Cosmic tech colors
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                if (this.x < 0 || this.x > bgParticleCanvas.width) this.speedX = -this.speedX;
+                if (this.y < 0 || this.y > bgParticleCanvas.height) this.speedY = -this.speedY;
+            }
+            draw() {
+                bgParticleCtx.fillStyle = this.color;
+                bgParticleCtx.beginPath();
+                bgParticleCtx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                bgParticleCtx.fill();
+            }
+        }
+
+        function initBgParticles() {
+            for (let i = 0; i < numberOfParticles; i++) {
+                bgParticlesArray.push(new BgParticle());
+            }
+        }
+
+        function animateBgParticles() {
+            bgParticleCtx.fillStyle = 'rgba(13, 27, 56, 0.1)';
+            bgParticleCtx.fillRect(0, 0, bgParticleCanvas.width, bgParticleCanvas.height);
+            for (let i = 0; i < bgParticlesArray.length; i++) {
+                bgParticlesArray[i].update();
+                bgParticlesArray[i].draw();
+            }
+            requestAnimationFrame(animateBgParticles);
+        }
+
+        resizeBgParticleCanvas();
+        window.addEventListener('resize', resizeBgParticleCanvas);
+        initBgParticles();
+        animateBgParticles();
+
+        // Game Logic
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Set canvas size dynamically
+        function resizeGameCanvas() {
+            const maxWidth = 800;
+            const maxHeight = 600;
+            const aspectRatio = maxWidth / maxHeight;
+            let width = window.innerWidth > maxWidth ? maxWidth : window.innerWidth;
+            let height = width / aspectRatio;
+            if (height > window.innerHeight || height > maxHeight) {
+                height = window.innerHeight > maxHeight ? maxHeight : window.innerHeight;
+                width = height * aspectRatio;
+            }
+            canvas.width = width;
+            canvas.height = height;
+        }
+
+        resizeGameCanvas();
+        window.addEventListener('resize', resizeGameCanvas);
+
+        // Constants
+        const SCREEN_WIDTH = canvas.width;
+        const SCREEN_HEIGHT = canvas.height;
+        const PADDLE_WIDTH = SCREEN_WIDTH * 0.025; // 20/800
+        const PADDLE_HEIGHT = SCREEN_HEIGHT * 0.1667; // 100/600
+        const BALL_SIZE = SCREEN_WIDTH * 0.025; // 20/800
+        const BRICK_WIDTH = SCREEN_WIDTH * 0.05; // 40/800
+        const BRICK_HEIGHT = SCREEN_HEIGHT * 0.0333; // 20/600
+        const BRICK_COLUMNS = 5;
+        const BRICK_ROWS = 30;
+        const PADDLE_SPEED = SCREEN_WIDTH * 0.00625; // 5/800
+        const BALL_SPEED = SCREEN_WIDTH * 0.00625; // 5/800
+        const TARGET_SCORE = 50;
+
+        // Colors
+        const BLACK = '#0d1b38'; /* Dark navy for canvas background */
+        const WHITE = '#e6f0ff'; /* Star-white for paddles and ball */
+        const RED = '#00e5ff'; /* Neon teal for bricks/particles */
+        const GREEN = '#39ff14'; /* Cyber lime for bricks/particles */
+        const BLUE = '#ff00ff'; /* Electric magenta for bricks/particles */
+
+        class Paddle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = PADDLE_WIDTH;
+                this.height = PADDLE_HEIGHT;
+                this.speed = PADDLE_SPEED;
+                this.movingUp = false;
+                this.movingDown = false;
+            }
+
+            move() {
+                if (this.movingUp) this.y -= this.speed;
+                if (this.movingDown) this.y += this.speed;
+                this.y = Math.max(0, Math.min(SCREEN_HEIGHT - this.height, this.y));
+            }
+
+            draw() {
+                ctx.fillStyle = WHITE;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+        }
+
+        class Ball {
+            constructor() {
+                this.reset();
+                this.size = BALL_SIZE;
+            }
+
+            move() {
+                this.x += this.velX;
+                this.y += this.velY;
+            }
+
+            reset() {
+                this.x = SCREEN_WIDTH / 2;
+                this.y = SCREEN_HEIGHT / 2;
+                this.velX = (Math.random() < 0.5 ? -1 : 1) * BALL_SPEED;
+                this.velY = (Math.random() < 0.5 ? -1 : 1) * BALL_SPEED;
+                this.lastHit = null;
+            }
+
+            draw() {
+                ctx.fillStyle = WHITE;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        class Brick {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = BRICK_WIDTH;
+                this.height = BRICK_HEIGHT;
+                this.color = [RED, GREEN, BLUE][Math.floor(Math.random() * 3)];
+                this.intact = true;
+            }
+
+            draw() {
+                if (this.intact) {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(this.x, this.y, this.width, this.height);
+                }
+            }
+        }
+
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = Math.random() * 3 + 2;
+                this.velX = Math.random() * 4 - 2;
+                this.velY = Math.random() * 4 - 2;
+                this.life = 30;
+                this.color = [RED, GREEN, BLUE][Math.floor(Math.random() * 3)];
+            }
+
+            update() {
+                this.x += this.velX;
+                this.y += this.velY;
+                this.life--;
+            }
+
+            draw() {
+                if (this.life <= 0) return;
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life / 29;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+            }
+        }
+
+        function ballCollidesWithPaddle(ball, paddle) {
+            return (ball.x - ball.size / 2 < paddle.x + paddle.width &&
+                    ball.x + ball.size / 2 > paddle.x &&
+                    ball.y - ball.size / 2 < paddle.y + paddle.height &&
+                    ball.y + ball.size / 2 > paddle.y);
+        }
+
+        function ballCollidesWithBrick(ball, brick) {
+            if (!brick.intact) return false;
+            return (ball.x - ball.size / 2 < brick.x + brick.width &&
+                    ball.x + ball.size / 2 > brick.x &&
+                    ball.y - ball.size / 2 < brick.y + brick.height &&
+                    ball.y + ball.size / 2 > brick.y);
+        }
+
+        // Initialize game objects
+        const leftPaddle = new Paddle(SCREEN_WIDTH * 0.0625, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2); // 50/800
+        const rightPaddle = new Paddle(SCREEN_WIDTH - SCREEN_WIDTH * 0.0625 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2);
+        const ball = new Ball();
+
+        // Create brick wall
+        const bricks = [];
+        const brickStartX = SCREEN_WIDTH / 2 - (BRICK_COLUMNS * BRICK_WIDTH) / 2;
+        for (let col = 0; col < BRICK_COLUMNS; col++) {
+            for (let row = 0; row < BRICK_ROWS; row++) {
+                bricks.push(new Brick(brickStartX + col * BRICK_WIDTH, row * BRICK_HEIGHT));
+            }
+        }
+
+        let leftScore = 0;
+        let rightScore = 0;
+        let particles = [];
+        let gameOver = false;
+
+        // Keyboard controls (for desktop testing; adapt for touch in Mini App)
+        document.addEventListener('keydown', (e) => {
+            switch (e.key) {
+                case 'w': leftPaddle.movingUp = true; break;
+                case 's': leftPaddle.movingDown = true; break;
+                case 'ArrowUp': rightPaddle.movingUp = true; break;
+                case 'ArrowDown': rightPaddle.movingDown = true; break;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            switch (e.key) {
+                case 'w': leftPaddle.movingUp = false; break;
+                case 's': leftPaddle.movingDown = false; break;
+                case 'ArrowUp': rightPaddle.movingUp = false; break;
+                case 'ArrowDown': rightPaddle.movingDown = false; break;
+            }
+        });
+
+        // Touch controls for mobile (Telegram Mini App environment)
+        let touchStartYLeft = null;
+        let touchStartYRight = null;
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touches = e.touches;
+            for (let i = 0; i < touches.length; i++) {
+                const touchX = touches[i].clientX;
+                if (touchX < window.innerWidth / 2) {
+                    // Left side of screen
+                    touchStartYLeft = touches[i].clientY;
+                    leftPaddle.movingUp = false;
+                    leftPaddle.movingDown = false;
+                } else {
+                    // Right side of screen
+                    touchStartYRight = touches[i].clientY;
+                    rightPaddle.movingUp = false;
+                    rightPaddle.movingDown = false;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touches = e.touches;
+            for (let i = 0; i < touches.length; i++) {
+                const touchX = touches[i].clientX;
+                const touchY = touches[i].clientY;
+                if (touchX < window.innerWidth / 2 && touchStartYLeft !== null) {
+                    // Left paddle
+                    if (touchY < touchStartYLeft) {
+                        leftPaddle.movingUp = true;
+                        leftPaddle.movingDown = false;
+                    } else if (touchY > touchStartYLeft) {
+                        leftPaddle.movingUp = false;
+                        leftPaddle.movingDown = true;
+                    }
+                } else if (touchStartYRight !== null) {
+                    // Right paddle
+                    if (touchY < touchStartYRight) {
+                        rightPaddle.movingUp = true;
+                        rightPaddle.movingDown = false;
+                    } else if (touchY > touchStartYRight) {
+                        rightPaddle.movingUp = false;
+                        rightPaddle.movingDown = true;
+                    }
+                }
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            const touches = Array.from(e.touches);
+            const touchX = e.changedTouches[0].clientX;
+            if (touchX < window.innerWidth / 2) {
+                leftPaddle.movingUp = false;
+                leftPaddle.movingDown = false;
+                touchStartYLeft = null;
+            } else {
+                rightPaddle.movingUp = false;
+                rightPaddle.movingDown = false;
+                touchStartYRight = null;
+            }
+        });
+
+        // Restart functionality
+        function resetGame() {
+            leftPaddle.movingUp = false;
+            leftPaddle.movingDown = false;
+            leftPaddle.x = SCREEN_WIDTH * 0.0625;
+            leftPaddle.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+
+            rightPaddle.movingUp = false;
+            rightPaddle.movingDown = false;
+            rightPaddle.x = SCREEN_WIDTH - SCREEN_WIDTH * 0.0625 - PADDLE_WIDTH;
+            rightPaddle.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+
+            ball.reset();
+
+            bricks.length = 0;
+            const brickStartX = SCREEN_WIDTH / 2 - (BRICK_COLUMNS * BRICK_WIDTH) / 2;
+            for (let col = 0; col < BRICK_COLUMNS; col++) {
+                for (let row = 0; row < BRICK_ROWS; row++) {
+                    bricks.push(new Brick(brickStartX + col * BRICK_WIDTH, row * BRICK_HEIGHT));
+                }
+            }
+
+            particles = [];
+            leftScore = 0;
+            rightScore = 0;
+            gameOver = false;
+
+            document.getElementById('game-over').style.display = 'none';
+            document.getElementById('left-score').textContent = `Left: ${leftScore}`;
+            document.getElementById('right-score').textContent = `Right: ${rightScore}`;
+        }
+
+        document.getElementById('restart-btn').addEventListener('click', resetGame);
+
+        function update() {
+            if (gameOver) {
+                document.getElementById('game-over').style.display = 'block';
+                return;
+            }
+
+            leftPaddle.move();
+            rightPaddle.move();
+            ball.move();
+
+            // Ball collisions with walls
+            if (ball.y - ball.size / 2 <= 0 || ball.y + ball.size / 2 >= SCREEN_HEIGHT) {
+                ball.velY = -ball.velY;
+            }
+
+            // Ball collisions with paddles
+            if (ballCollidesWithPaddle(ball, leftPaddle)) {
+                ball.velX = Math.abs(ball.velX);
+                ball.lastHit = 'left';
+            } else if (ballCollidesWithPaddle(ball, rightPaddle)) {
+                ball.velX = -Math.abs(ball.velX);
+                ball.lastHit = 'right';
+            }
+
+            // Ball collisions with bricks
+            for (const brick of bricks) {
+                if (ballCollidesWithBrick(ball, brick)) {
+                    brick.intact = false;
+                    ball.velX = -ball.velX;
+                    for (let i = 0; i < 5; i++) {
+                        particles.push(new Particle(brick.x + brick.width / 2, brick.y + brick.height / 2));
+                    }
+                    if (ball.lastHit === 'left') leftScore += 1;
+                    else if (ball.lastHit === 'right') rightScore += 1;
+                }
+            }
+
+            // Ball off screen
+            if (ball.x - ball.size / 2 <= 0) {
+                rightScore += 5;
+                ball.reset();
+            } else if (ball.x + ball.size / 2 >= SCREEN_WIDTH) {
+                leftScore += 5;
+                ball.reset();
+            }
+
+            // Update particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                if (particles[i].life <= 0) particles.splice(i, 1);
+            }
+
+            // Update scores
+            document.getElementById('left-score').textContent = `Left: ${leftScore}`;
+            document.getElementById('right-score').textContent = `Right: ${rightScore}`;
+
+            // Check for game over
+            if (leftScore >= TARGET_SCORE || rightScore >= TARGET_SCORE) {
+                gameOver = true;
+                document.getElementById('game-over').textContent = `${leftScore >= TARGET_SCORE ? 'Left' : 'Right'} Wins!`;
+                document.getElementById('game-over').style.display = 'block';
+            }
+        }
+
+        function draw() {
+            ctx.fillStyle = BLACK;
+            ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+            for (const brick of bricks) brick.draw();
+            leftPaddle.draw();
+            rightPaddle.draw();
+            ball.draw();
+            for (const particle of particles) particle.draw();
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
